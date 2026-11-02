@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>Thought Trash Can</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700&family=Nanum+Pen+Script&display=swap">
+<style>
+/* Layout: full-bleed night room in 3D; the writing pad docks bottom-left, a quiet tally top-left, Claude's whisper top-right. */
+:root {
+  --night: #131726;
+  --surface: #1e2336;
+  --ink: #ebe9f5;
+  --muted: #9da3bd;
+  --lamp: #f3b660;
+  --paper: #eeedf6;
+  --pen: #2b3152;
+  --rule: #b9c0de;
+  --pad-tint: #c9c1ec;
+  --danger-soft: #f0c2b8;
+  --font-ui: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-hand: "Nanum Pen Script", "Segoe Print", "Bradley Hand", cursive;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  background: var(--night); color: var(--ink); font-family: var(--font-ui);
+  overflow: hidden; -webkit-font-smoothing: antialiased;
+}
+#scene { position: fixed; inset: 0; }
+#scene canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+.hud {
+  position: fixed; top: calc(14px + env(safe-area-inset-top, 0px));
+  left: max(16px, env(safe-area-inset-left, 0px));
+  display: grid; gap: 2px; pointer-events: none;
+  text-shadow: 0 1px 10px rgba(19, 23, 38, 0.55);
+}
+.hud h1 { margin: 0; font-size: 1.15rem; font-weight: 700; letter-spacing: 0.01em; }
+.hud p { margin: 0; color: var(--ink); opacity: 0.85; font-size: 0.82rem; }
+.tally { font-variant-numeric: tabular-nums; color: var(--lamp); font-weight: 600; }
+
+.breath {
+  position: fixed; left: 50%; top: 34%; transform: translate(-50%, -50%);
+  font-family: var(--font-hand); font-size: clamp(2.2rem, 6vw, 3.6rem); color: var(--lamp);
+  text-shadow: 0 0 28px rgba(243, 182, 96, 0.45); pointer-events: none; transition: opacity 0.6s;
+}
+
+.whisper {
+  position: fixed; top: calc(14px + env(safe-area-inset-top, 0px));
+  right: max(16px, env(safe-area-inset-right, 0px));
+  width: min(340px, calc(100% - 32px));
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+  border-radius: 14px; padding: 14px 16px; backdrop-filter: blur(8px);
+  display: grid; gap: 6px; transition: opacity 0.8s, transform 0.8s;
+}
+.whisper.fading { opacity: 0; transform: translateY(-6px); }
+.whisper .who { font-size: 0.72rem; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); }
+.whisper .msg { font-size: 1rem; line-height: 1.45; }
+.whisper.urgent { border-color: var(--danger-soft); }
+.whisper .help { font-size: 0.9rem; color: var(--danger-soft); line-height: 1.4; }
+.whisper .help b { font-size: 1.1rem; user-select: all; }
+.whisper button { justify-self: start; }
+
+.desk {
+  position: fixed; left: max(16px, env(safe-area-inset-left, 0px));
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  width: min(400px, calc(100% - 32px)); display: grid; gap: 10px;
+}
+.sheet {
+  background: var(--paper); color: var(--pen); border-radius: 4px 4px 10px 10px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45), 0 2px 0 rgba(0,0,0,0.15);
+  overflow: hidden; transform: rotate(-0.6deg); transition: transform 0.35s, opacity 0.35s;
+}
+.sheet.tossing { transform: rotate(-8deg) translate(40px, -30px) scale(0.6); opacity: 0; }
+.sheet .bind { height: 16px; background: var(--pad-tint); box-shadow: inset 0 -2px 0 rgba(0,0,0,0.12); transition: background 0.3s; }
+.sheet label { display: block; padding: 8px 18px 0 46px; font-size: 0.72rem; letter-spacing: 0.09em; text-transform: uppercase; color: #6b7196; }
+.sheet textarea {
+  display: block; width: 100%; box-sizing: border-box; height: 162px; resize: none; border: 0; outline: none;
+  padding: 2px 18px 10px 46px; font-family: var(--font-hand); font-size: 27px; line-height: 32px; color: var(--pen);
+  background:
+    linear-gradient(90deg, transparent 34px, #e6a0a0 34px, #e6a0a0 35.5px, transparent 35.5px),
+    repeating-linear-gradient(180deg, transparent 0 31px, var(--rule) 31px 32px);
+  background-attachment: local;
+}
+.sheet textarea::placeholder { color: #8e94b4; }
+.sheet textarea:focus-visible { box-shadow: inset 0 0 0 2px var(--pad-tint); }
+
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+button {
+  font: 600 0.92rem/1 var(--font-ui); color: var(--ink); background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--ink) 16%, transparent); border-radius: 999px;
+  padding: 11px 16px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+}
+button:hover { border-color: color-mix(in srgb, var(--ink) 34%, transparent); }
+button:focus-visible, .switch input:focus-visible + span { outline: 2px solid var(--lamp); outline-offset: 2px; }
+button:disabled { opacity: 0.5; cursor: default; }
+.toss { background: var(--lamp); color: #2a1d0a; border-color: transparent; margin-left: auto; }
+.toss:hover { filter: brightness(1.06); }
+.mic { width: 42px; height: 42px; padding: 0; justify-content: center; }
+.mic svg { width: 18px; height: 18px; fill: currentColor; }
+.mic.listening { background: #3a2230; border-color: #e88a9a; color: #ffb3c0; animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 7px rgba(232, 138, 154, 0.18); } }
+
+.switch { display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--muted); cursor: pointer; user-select: none; }
+.switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.switch span { width: 34px; height: 20px; border-radius: 999px; background: var(--surface); border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent); position: relative; transition: background 0.2s; }
+.switch span::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--muted); transition: transform 0.2s, background 0.2s; }
+.switch input:checked + span { background: color-mix(in srgb, var(--lamp) 35%, var(--surface)); }
+.switch input:checked + span::after { transform: translateX(14px); background: var(--lamp); }
+
+.note { font-size: 0.8rem; color: var(--muted); line-height: 1.4; margin: 0; min-height: 1.1em; }
+.caption {
+  position: fixed; pointer-events: none; font-family: var(--font-hand); font-size: 1.7rem; color: var(--ink);
+  text-shadow: 0 2px 12px rgba(0,0,0,0.6); transition: opacity 1.2s, transform 1.2s; white-space: nowrap;
+}
+kbd { font: 600 0.72rem var(--font-ui); background: var(--surface); border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent); border-radius: 4px; padding: 1px 5px; }
+
+@media (max-width: 560px) {
+  .hud p.hint { display: none; }
+  .sheet textarea { height: 128px; }
+  .whisper { top: auto; bottom: calc(300px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sheet, .whisper, .caption, .breath { transition: none; }
+  .mic.listening { animation: none; }
+}
+</style>
+
+<div id="scene" aria-label="A flower field at sunset with a writing table, three note pads and a trash can"></div>
+
+<div class="hud">
+  <h1>Thought Trash Can</h1>
+  <p>Thrown away this visit: <span class="tally" id="tally">0</span></p>
+  <p class="hint">Drag to walk around the table, scroll to come closer. Click a pad to pick it; click the can or press <kbd>Ctrl</kbd> + <kbd>Enter</kbd> to toss.</p>
+</div>
+
+<div class="breath" id="breath" hidden></div>
+
+<div class="whisper" id="whisper" hidden role="status" aria-live="polite">
+  <div class="who">A quiet word</div>
+  <div class="msg" id="whisperMsg"></div>
+  <div class="help" id="whisperHelp" hidden>You don't have to carry this alone. Call or text <b>9-8-8</b> (Canada and US) any time, or your local emergency number.</div>
+  <button id="whisperClose" hidden>Close</button>
+</div>
+
+<div class="desk">
+  <div class="sheet" id="sheet">
+    <div class="bind" id="bind"></div>
+    <label for="thought">What's taking up space in your head?</label>
+    <textarea id="thought" maxlength="1200" placeholder="I keep replaying what I said in the meeting…"></textarea>
+  </div>
+  <div class="controls">
+    <button class="mic" id="mic" aria-label="Speak your thought" title="Speak your thought">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2Z"/></svg>
+    </button>
+    <label class="switch" id="aiSwitch"><input type="checkbox" id="ai" checked><span></span>Gentle reply</label>
+    <button class="toss" id="toss">Crumple &amp; toss</button>
+  </div>
+  <p class="note" id="note">Nothing you write is saved. With gentle reply on, your words go to Claude for a short response.</p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(() => {
+"use strict";
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const $ = (id) => document.getElementById(id);
+const thought = $("thought"), note = $("note"), tallyEl = $("tally");
+
+/* ---------- renderer & scene ---------- */
+const host = $("scene");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+host.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 60);
+
+/* lights */
+/* golden-hour light: low sun, sky fill, and a lantern on the table (it pulses for the breathing guide) */
+scene.add(new THREE.HemisphereLight(0xbfd3ff, 0x4c6a2a, 0.75));
+const sun = new THREE.DirectionalLight(0xffd29a, 1.35);
+sun.position.set(-6, 7, 5); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -5, right: 5, top: 5, bottom: -5, near: 1, far: 25 });
+sun.shadow.bias = -0.0008; scene.add(sun);
+const lamp = new THREE.PointLight(0xffb764, 0.9, 4, 2);
+lamp.position.set(0.35, 1.32, -0.2); scene.add(lamp);
+const LAMP_BASE = 0.9;
+
+/* helpers */
+function canvasTex(w, h, draw, repeat) {
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  draw(c.getContext("2d"), w, h);
+  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding;
+  if (repeat) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(repeat[0], repeat[1]); }
+  t.anisotropy = 4; return t;
+}
+const std = (o) => new THREE.MeshStandardMaterial(o);
+function mesh(geo, mat, cast = true, receive = true) {
+  const m = new THREE.Mesh(geo, mat); m.castShadow = cast; m.receiveShadow = receive; return m;
+}
+
+/* sky dome */
+const skyTex = canvasTex(32, 512, (g, w, h) => {
+  const grd = g.createLinearGradient(0, 0, 0, h);
+  grd.addColorStop(0, "#3c4d86"); grd.addColorStop(0.32, "#7d87c4"); grd.addColorStop(0.47, "#f2b48c");
+  grd.addColorStop(0.5, "#f7cf9c"); grd.addColorStop(1, "#d9a77e");
+  g.fillStyle = grd; g.fillRect(0, 0, w, h);
+});
+const sky = new THREE.Mesh(new THREE.SphereGeometry(40, 32, 16), new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false }));
+scene.add(sky);
+scene.background = new THREE.Color(0xf2b48c);
+scene.fog = new THREE.Fog(0xeeb48e, 10, 30);
+
+/* meadow ground */
+const grassTex = canvasTex(256, 256, (g, w, h) => {
+  g.fillStyle = "#4f7a32"; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 2600; i++) {
+    g.fillStyle = `hsl(${88 + Math.random() * 30}, ${40 + Math.random() * 20}%, ${22 + Math.random() * 18}%)`;
+    g.fillRect(Math.random() * w, Math.random() * h, 2, 3 + Math.random() * 4);
+  }
+}, [30, 30]);
+const ground = mesh(new THREE.CircleGeometry(40, 64), std({ map: grassTex, roughness: 1 }), false, true);
+ground.rotation.x = -Math.PI / 2; scene.add(ground);
+/* trampled clearing under the table */
+const clearing = mesh(new THREE.CircleGeometry(2.3, 48), std({ color: 0x6b6a3a, roughness: 1, transparent: true, opacity: 0.55 }), false, true);
+clearing.rotation.x = -Math.PI / 2; clearing.position.set(0.2, 0.004, 0.45); clearing.scale.set(1.35, 1, 1); scene.add(clearing);
+
+/* wind: one shared sway for grass and flowers (stems and heads stay attached) */
+const wind = { value: 0 };
+function swaying(mat) {
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uTime = wind;
+    sh.vertexShader = "uniform float uTime;\n" + sh.vertexShader.replace("#include <begin_vertex>",
+      `#include <begin_vertex>
+       float h = max(position.y, 0.0);
+       float ph = instanceMatrix[3].x * 0.7 + instanceMatrix[3].z * 0.5;
+       transformed.x += sin(uTime * 1.5 + ph) * 0.09 * h;
+       transformed.z += cos(uTime * 1.1 + ph * 1.3) * 0.05 * h;`);
+  };
+  return mat;
+}
+/* keep the field out of the table/can clearing */
+function fieldSpot(minR, maxR) {
+  for (;;) {
+    const a = Math.random() * Math.PI * 2, r = minR + Math.sqrt(Math.random()) * (maxR - minR);
+    const x = 0.2 + Math.cos(a) * r, z = 0.45 + Math.sin(a) * r;
+    if (Math.hypot((x - 0.2) / 1.35, z - 0.45) > 2.15) return [x, z];
+  }
+}
+const dummy = new THREE.Object3D();
+function scatter(geo, mat, n, minR, maxR, scale, colorFn) {
+  const im = new THREE.InstancedMesh(geo, swaying(mat), n);
+  im.castShadow = false; im.receiveShadow = true;
+  const col = new THREE.Color();
+  for (let i = 0; i < n; i++) {
+    const [x, z] = fieldSpot(minR, maxR);
+    dummy.position.set(x, 0, z); dummy.rotation.set(0, Math.random() * 6.28, 0);
+    dummy.scale.setScalar(scale[0] + Math.random() * (scale[1] - scale[0])); dummy.updateMatrix();
+    im.setMatrixAt(i, dummy.matrix);
+    if (colorFn) { colorFn(col, i); im.setColorAt(i, col); }
+  }
+  scene.add(im); return im;
+}
+/* grass blades */
+const blade = new THREE.ConeGeometry(0.025, 0.32, 3); blade.translate(0, 0.16, 0);
+scatter(blade, std({ color: 0xffffff, roughness: 1 }), 5000, 1.4, 16, [0.6, 1.4],
+  (c) => c.setHSL(0.22 + Math.random() * 0.08, 0.5, 0.22 + Math.random() * 0.14));
+/* flowers: stems + heads share positions so they sway together */
+const FLOWERS = 2600, STEM_H = 0.42;
+const stem = new THREE.CylinderGeometry(0.008, 0.01, STEM_H, 4); stem.translate(0, STEM_H / 2, 0);
+const head = new THREE.IcosahedronGeometry(0.055, 0); head.scale(1, 0.45, 1); head.translate(0, STEM_H, 0);
+const PETALS = ["#f4f1ff", "#f7d34f", "#e9799c", "#b69cf0", "#f39a5b", "#ffffff", "#8fb7f2"];
+const seed = Math.random;
+const spots = [];
+for (let i = 0; i < FLOWERS; i++) spots.push({ p: fieldSpot(1.2, 15), s: 0.7 + seed() * 0.8, r: seed() * 6.28, c: PETALS[(seed() * PETALS.length) | 0] });
+function placeAll(im, colored) {
+  const col = new THREE.Color();
+  spots.forEach((f, i) => {
+    dummy.position.set(f.p[0], 0, f.p[1]); dummy.rotation.set(0, f.r, 0); dummy.scale.setScalar(f.s); dummy.updateMatrix();
+    im.setMatrixAt(i, dummy.matrix);
+    if (colored) { col.set(f.c); im.setColorAt(i, col); }
+  });
+  scene.add(im);
+}
+const stems = new THREE.InstancedMesh(stem, swaying(std({ color: 0x4e7d2c, roughness: 1 })), FLOWERS);
+const heads = new THREE.InstancedMesh(head, swaying(std({ color: 0xffffff, roughness: 0.7, flatShading: true })), FLOWERS);
+placeAll(stems, false); placeAll(heads, true);
+
+/* table */
+const wood = std({ color: 0x7a5236, roughness: 0.55 });
+const table = new THREE.Group(); table.position.set(-0.7, 0, 0.2); scene.add(table);
+const top = mesh(new THREE.BoxGeometry(2.7, 0.08, 1.4), wood); top.position.y = 1.0; table.add(top);
+[[-1.25, -0.6], [1.25, -0.6], [-1.25, 0.6], [1.25, 0.6]].forEach(([x, z]) => {
+  const leg = mesh(new THREE.BoxGeometry(0.08, 0.96, 0.08), wood); leg.position.set(x, 0.48, z); table.add(leg);
+});
+/* lantern */
+const frameMat = std({ color: 0x2d2b33, metalness: 0.6, roughness: 0.4 });
+const lantern = new THREE.Group(); lantern.position.set(0.35, 1.04, -0.2); scene.add(lantern);
+const lBase = mesh(new THREE.BoxGeometry(0.2, 0.03, 0.2), frameMat); lBase.position.y = 0.015; lantern.add(lBase);
+const lTop = mesh(new THREE.ConeGeometry(0.15, 0.09, 4), frameMat); lTop.rotation.y = Math.PI / 4; lTop.position.y = 0.33; lantern.add(lTop);
+const bulb = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.24, 0.16), new THREE.MeshBasicMaterial({ color: 0xffd9a0, transparent: true, opacity: 0.85 }));
+bulb.position.y = 0.16; lantern.add(bulb);
+const ring = mesh(new THREE.TorusGeometry(0.04, 0.006, 6, 16), frameMat); ring.position.y = 0.4; lantern.add(ring);
+/* mug for scale */
+const mug = mesh(new THREE.CylinderGeometry(0.09, 0.08, 0.2, 24), std({ color: 0x8aa39a, roughness: 0.4 }));
+mug.position.set(-1.85, 1.14, -0.35); scene.add(mug);
+
+/* ---------- note pads ---------- */
+const PAD_COLORS = [
+  { name: "lilac", hex: "#c9c1ec" },
+  { name: "mint", hex: "#bfe0d2" },
+  { name: "peach", hex: "#f2d2bd" }
+];
+const SW = 512, SH = 640;
+const pads = PAD_COLORS.map((pc, i) => {
+  const g = new THREE.Group();
+  g.position.set(-1.55 + i * 0.78, 1.04, 0.32 - (i % 2) * 0.12);
+  g.rotation.y = [0.12, -0.05, -0.16][i];
+  const base = mesh(new THREE.BoxGeometry(0.5, 0.05, 0.64), std({ color: new THREE.Color(pc.hex), roughness: 0.9 }));
+  base.position.y = 0.025; g.add(base);
+  const bind = mesh(new THREE.BoxGeometry(0.5, 0.035, 0.07), std({ color: new THREE.Color(pc.hex).multiplyScalar(0.72), roughness: 0.7 }));
+  bind.position.set(0, 0.06, -0.29); g.add(bind);
+  const c = document.createElement("canvas"); c.width = SW; c.height = SH;
+  const tex = new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding; tex.anisotropy = 8;
+  const sheet = mesh(new THREE.PlaneGeometry(0.48, 0.6), std({ map: tex, roughness: 0.95 }), false, true);
+  sheet.rotation.x = -Math.PI / 2; sheet.position.set(0, 0.052, 0.015); g.add(sheet);
+  scene.add(g);
+  const pad = { group: g, canvas: c, ctx: c.getContext("2d"), tex, sheet, color: pc.hex, baseY: g.position.y, text: "" };
+  g.traverse((o) => (o.userData.pad = pad));
+  return pad;
+});
+let current = pads[0];
+
+function wrapLines(ctx, text, maxW) {
+  const out = [];
+  for (const para of text.split("\n")) {
+    let line = "";
+    for (const word of para.split(/\s+/)) {
+      if (!word) continue;
+      const test = line ? line + " " + word : word;
+      if (ctx.measureText(test).width > maxW && line) { out.push(line); line = word; } else line = test;
+    }
+    out.push(line);
+  }
+  return out;
+}
+function drawSheet(pad, text, ctx = pad.ctx) {
+  ctx.fillStyle = "#f3f2f8"; ctx.fillRect(0, 0, SW, SH);
+  ctx.fillStyle = pad.color; ctx.globalAlpha = 0.55; ctx.fillRect(0, 0, SW, 44); ctx.globalAlpha = 1;
+  ctx.strokeStyle = "#c3c9e3"; ctx.lineWidth = 2;
+  for (let y = 120; y < SH - 10; y += 50) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(SW, y); ctx.stroke(); }
+  ctx.strokeStyle = "#e6a0a0"; ctx.beginPath(); ctx.moveTo(56, 44); ctx.lineTo(56, SH); ctx.stroke();
+  ctx.font = '44px "Nanum Pen Script", "Segoe Print", cursive';
+  const empty = !text.trim();
+  ctx.fillStyle = empty ? "rgba(43,49,82,.28)" : "#2b3152";
+  let lines = wrapLines(ctx, empty ? "write it here…" : text, SW - 96);
+  const max = 10;
+  if (lines.length > max) { lines = lines.slice(0, max); lines[max - 1] += " …"; }
+  lines.forEach((l, i) => ctx.fillText(l, 70, 112 + i * 50));
+}
+function refresh(pad) { drawSheet(pad, pad.text); pad.tex.needsUpdate = true; }
+pads.forEach(refresh);
+
+function selectPad(pad) {
+  current.text = thought.value;
+  current = pad; thought.value = pad.text;
+  $("bind").style.background = pad.color;
+  document.documentElement.style.setProperty("--pad-tint", pad.color);
+  thought.focus({ preventScroll: true });
+}
+thought.addEventListener("input", () => { current.text = thought.value; refresh(current); });
+
+/* ---------- trash can ---------- */
+const can = new THREE.Group(); can.position.set(2.05, 0, 0.75); scene.add(can);
+const metal = std({ color: 0x9aa3b8, metalness: 0.75, roughness: 0.32, side: THREE.DoubleSide });
+const body = mesh(new THREE.CylinderGeometry(0.42, 0.34, 1.0, 48, 1, true), metal); body.position.y = 0.5; can.add(body);
+const bottom = mesh(new THREE.CircleGeometry(0.34, 40), std({ color: 0x1a1c24 }), false, true);
+bottom.rotation.x = -Math.PI / 2; bottom.position.y = 0.02; can.add(bottom);
+const rim = mesh(new THREE.TorusGeometry(0.42, 0.022, 12, 56), metal); rim.rotation.x = Math.PI / 2; rim.position.y = 1.0; can.add(rim);
+const band = mesh(new THREE.TorusGeometry(0.36, 0.014, 10, 56), metal); band.rotation.x = Math.PI / 2; band.position.y = 0.18; can.add(band);
+const pedal = mesh(new THREE.BoxGeometry(0.22, 0.03, 0.12), std({ color: 0x3a3f52, metalness: 0.5, roughness: 0.4 }));
+pedal.position.set(0, 0.06, 0.4); can.add(pedal);
+const lidPivot = new THREE.Group(); lidPivot.position.set(0, 1.01, -0.42); can.add(lidPivot);
+const lid = mesh(new THREE.CylinderGeometry(0.445, 0.445, 0.04, 48), metal); lid.position.set(0, 0.02, 0.42); lidPivot.add(lid);
+const knob = mesh(new THREE.BoxGeometry(0.16, 0.03, 0.05), std({ color: 0x3a3f52, metalness: 0.4 })); knob.position.set(0, 0.055, 0.78); lidPivot.add(knob);
+can.traverse((o) => (o.userData.can = true));
+
+/* ---------- tiny tween engine ---------- */
+const tweens = [];
+const ease = { inOut: (t) => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2, out: (t) => 1 - Math.pow(1 - t, 3), lin: (t) => t };
+function tween(ms, fn, e = ease.inOut) {
+  if (reduce) ms = Math.min(ms, 120);
+  return new Promise((res) => tweens.push({ ms, t0: performance.now(), fn, e, res }));
+}
+const wait = (ms) => new Promise((r) => setTimeout(r, reduce ? 0 : ms));
+
+let lidAngle = 0;
+async function setLid(to, ms = 280) {
+  const from = lidAngle;
+  await tween(ms, (p) => { lidAngle = from + (to - from) * p; lidPivot.rotation.x = -lidAngle; }, ease.out);
+}
+
+/* ---------- paper balls ---------- */
+function hash(x, y, z, s) { const v = Math.sin(x * 127.1 + y * 311.7 + z * 74.7 + s) * 43758.5453; return v - Math.floor(v); }
+function ballGeometry(seed) {
+  const geo = new THREE.IcosahedronGeometry(0.11, 3);
+  const p = geo.attributes.position, v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i);
+    const k = 0.78 + 0.42 * hash(Math.round(v.x * 900), Math.round(v.y * 900), Math.round(v.z * 900), seed);
+    v.multiplyScalar(k); p.setXYZ(i, v.x, v.y, v.z);
+  }
+  geo.computeVertexNormals(); return geo;
+}
+const balls = [];
+function makeBall(pad) {
+  const c = document.createElement("canvas"); c.width = 256; c.height = 320;
+  const g = c.getContext("2d"); g.drawImage(pad.canvas, 0, 0, 256, 320);
+  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding;
+  const b = mesh(ballGeometry(Math.random() * 1000), std({ map: t, roughness: 0.92, flatShading: true }));
+  scene.add(b); return b;
+}
+
+/* ---------- toss ---------- */
+let busy = false, count = 0;
+const MOUTH = new THREE.Vector3(2.05, 1.32, 0.75);
+async function toss() {
+  const text = thought.value.trim();
+  if (busy) return;
+  if (!text) { say("Write or say something first, then toss it."); thought.focus(); return; }
+  busy = true; $("toss").disabled = true;
+  const pad = current;
+  $("sheet").classList.add("tossing");
+
+  // snapshot the written sheet into a crumpling paper
+  const start = new THREE.Vector3(); pad.sheet.getWorldPosition(start);
+  const snap = document.createElement("canvas"); snap.width = SW; snap.height = SH; snap.getContext("2d").drawImage(pad.canvas, 0, 0);
+  const snapTex = new THREE.CanvasTexture(snap); snapTex.encoding = THREE.sRGBEncoding;
+  const flat = new THREE.Mesh(new THREE.PlaneGeometry(0.48, 0.6), std({ map: snapTex, roughness: 0.95, side: THREE.DoubleSide }));
+  flat.position.copy(start); flat.rotation.x = -Math.PI / 2; flat.rotation.z = pad.group.rotation.y; scene.add(flat);
+  const ball = makeBall(pad); ball.position.copy(start); ball.scale.setScalar(0.001);
+
+  // fresh sheet on the pad
+  pad.text = ""; thought.value = ""; refresh(pad);
+  const words = text;
+
+  const ai = maybeAskClaude(words);   // start the reply while the paper flies
+
+  await tween(420, (p) => {
+    flat.position.y = start.y + 0.28 * p;
+    flat.scale.set(1 - 0.8 * p, 1 - 0.85 * p, 1);
+    flat.rotation.z = pad.group.rotation.y + p * 1.6; flat.rotation.y = p * 0.9;
+  });
+  scene.remove(flat); flat.geometry.dispose(); flat.material.map.dispose(); flat.material.dispose();
+  ball.position.y = start.y + 0.28;
+  await tween(160, (p) => ball.scale.setScalar(0.4 + 0.6 * p), ease.out);
+
+  setLid(1.25);
+  const from = ball.position.clone(), to = MOUTH.clone();
+  const spin = new THREE.Vector3(Math.random() * 8, Math.random() * 8, Math.random() * 8);
+  const arcH = 0.9 + from.distanceTo(to) * 0.18;
+  await tween(820, (p) => {
+    ball.position.lerpVectors(from, to, p);
+    ball.position.y += arcH * 4 * p * (1 - p);
+    ball.rotation.set(spin.x * p, spin.y * p, spin.z * p);
+  }, ease.lin);
+
+  // drop inside, settle on the pile
+  const a = Math.random() * Math.PI * 2, r = Math.random() * 0.16;
+  const rest = new THREE.Vector3(2.05 + Math.cos(a) * r, Math.min(0.12 + balls.length * 0.045, 0.82), 0.75 + Math.sin(a) * r);
+  const drop = ball.position.clone();
+  await tween(300, (p) => ball.position.lerpVectors(drop, rest, p), (t) => t * t);
+  balls.push(ball);
+  if (balls.length > 20) { const old = balls.shift(); scene.remove(old); old.geometry.dispose(); old.material.map.dispose(); old.material.dispose(); }
+
+  count++; tallyEl.textContent = count;
+  caption(CLOSERS[(count - 1) % CLOSERS.length]);
+  await wait(380);
+  await setLid(0, 360);
+  $("sheet").classList.remove("tossing");
+  busy = false; $("toss").disabled = false;
+  thought.focus({ preventScroll: true });
+  await ai;
+}
+const CLOSERS = ["gone.", "set down.", "not yours to hold right now.", "out of your head.", "let go."];
+
+/* ---------- caption near the can ---------- */
+function caption(text) {
+  const p = MOUTH.clone(); p.y += 0.5; p.project(camera);
+  const el = document.createElement("div"); el.className = "caption"; el.textContent = text;
+  const rect = renderer.domElement.getBoundingClientRect();
+  el.style.left = Math.min(rect.width - 220, (p.x * 0.5 + 0.5) * rect.width - 60) + "px";
+  el.style.top = ((-p.y * 0.5 + 0.5) * rect.height) + "px";
+  document.body.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = "0"; el.style.transform = "translateY(-30px)"; });
+  setTimeout(() => el.remove(), 1400);
+}
+function say(t) { note.textContent = t; }
+
+/* ---------- breathing (also a tool Claude can call) ---------- */
+let breathUntil = 0, breathStart = 0;
+function startBreathing(cycles) {
+  cycles = Math.max(1, Math.min(4, Math.round(Number(cycles) || 2)));
+  breathStart = performance.now(); breathUntil = breathStart + cycles * 8000;
+  $("breath").hidden = false;
+  return `Breathing guide started for ${cycles} cycles of 4 seconds in, 4 seconds out.`;
+}
+
+/* ---------- Claude: gentle reply agent ---------- */
+let sample = null, toolsOk = false;
+/* Inside Claude the page asks Claude directly; served by the .NET app it calls /api (Azure OpenAI + Azure Speech). */
+const serverMode = !(window.claude && window.claude.use);
+const aiBox = $("ai");
+if (!serverMode) {
+  claude.use("sample").then(async (s) => {
+    sample = s;
+    if (!s) { hideAI("Gentle replies aren't available here."); return; }
+    try { toolsOk = !!(await s.limits()).tools; } catch { toolsOk = false; }
+  });
+}
+function hideAI(msg) {
+  $("aiSwitch").hidden = true; aiBox.checked = false;
+  say(msg ? msg + " Nothing you write is saved." : "Nothing you write is saved.");
+}
+
+function promptFor(text) {
+  return `You are the quiet voice inside "Thought Trash Can", a calm 3D room where someone writes down a worry or intrusive thought and throws it into a trash can to clear their head. They just threw this away:
+
+"""${text.slice(0, 1200)}"""
+
+Reply with only a JSON object: {"kind": "worry" | "regret" | "to-do" | "self-criticism" | "feeling" | "other", "reply": string, "urgent": boolean}
+Rules for "reply": one or two short, warm sentences, at most 35 words. Acknowledge that they set it down without quoting it back. No advice lists, no clinical words, no exclamation marks.
+If kind is "to-do", gently note it can wait for tomorrow and a written list.${toolsOk ? `
+If the thought reads anxious, racing or panicky, call the start_breathing tool once (2 or 3 cycles) before you answer, and mention the light will help them breathe.` : ""}
+Set "urgent" to true only if the text suggests risk of suicide, self-harm or harming someone. Then the reply should be caring and direct, say they don't have to carry it alone, and encourage reaching out right now to someone they trust or a crisis line.`;
+}
+
+async function askServer(text) {
+  try {
+    const res = await fetch("/api/release", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+    if (res.status === 404) { hideWhisper(); hideAI("Gentle replies aren't set up on this server."); return; }
+    if (res.status === 429) { showWhisper("Lots of thoughts tossed at once. Give it a minute.", false); return; }
+    if (!res.ok) { hideWhisper(); return; }
+    const r = await res.json();
+    if (r.breatheCycles > 0) startBreathing(r.breatheCycles);
+    showWhisper(r.reply || "That's set down now.", !!r.urgent);
+  } catch { hideWhisper(); }
+}
+
+async function maybeAskClaude(text) {
+  if (!aiBox.checked) return;
+  if (serverMode) { showWhisper("…", false); return askServer(text); }
+  if (!sample) return;
+  showWhisper("…", false);
+  const opts = { modelTier: "quick" };
+  if (toolsOk) {
+    opts.tools = [{
+      name: "start_breathing",
+      description: "Starts a slow breathing guide in the room: the desk lamp brightens for 4 s (breathe in) and dims for 4 s (breathe out). Returns a confirmation string.",
+      inputSchema: { type: "object", properties: { cycles: { type: "integer", minimum: 1, maximum: 4, description: "How many 8-second breaths" } }, required: ["cycles"] },
+      execute: (input) => startBreathing(input.cycles)
+    }];
+  } else opts.cache = false;
+  try {
+    const r = await sample.json(promptFor(text), opts);
+    const msg = r && typeof r.reply === "string" ? r.reply : "That's set down now.";
+    showWhisper(msg, !!(r && r.urgent));
+  } catch (e) {
+    const code = e && e.code;
+    if (["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"].includes(code)) {
+      hideWhisper(); hideAI("Gentle replies are off for this view.");
+    } else if (code === "rate_limited") {
+      showWhisper("Lots of thoughts tossed at once. The quiet voice will be back in a little while.", false);
+    } else if (code === "tools_unavailable") {
+      toolsOk = false; hideWhisper();
+    } else { hideWhisper(); }
+  }
+}
+
+let whisperTimer;
+function showWhisper(text, urgent) {
+  const w = $("whisper");
+  clearTimeout(whisperTimer);
+  w.hidden = false; w.classList.remove("fading");
+  w.classList.toggle("urgent", urgent);
+  $("whisperMsg").textContent = text;
+  $("whisperHelp").hidden = !urgent; $("whisperClose").hidden = !urgent;
+  if (!urgent && text !== "…") whisperTimer = setTimeout(hideWhisper, 11000);
+}
+function hideWhisper() {
+  const w = $("whisper"); if (w.hidden) return;
+  w.classList.add("fading"); setTimeout(() => { w.hidden = true; w.classList.remove("fading"); }, 800);
+}
+$("whisperClose").onclick = hideWhisper;
+
+/* ---------- voice ---------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, listening = false, baseText = "", azureRec = null;
+function writeVoice(s) { thought.value = baseText + s; current.text = thought.value; refresh(current); }
+
+/* Served by the .NET app: Azure AI Speech via a short-lived token from /api/speech/token. */
+async function azureRecognizer() {
+  try {
+    const r = await fetch("/api/speech/token"); if (!r.ok) return null;
+    const { token, region } = await r.json();
+    if (!window.SpeechSDK) await new Promise((ok, no) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/microsoft-cognitiveservices-speech-sdk@1.40.0/distrib/browser/microsoft.cognitiveservices.speech.sdk.bundle-min.js";
+      s.onload = ok; s.onerror = no; document.head.appendChild(s);
+    });
+    const cfg = SpeechSDK.SpeechConfig.fromAuthorizationToken(token, region);
+    cfg.speechRecognitionLanguage = navigator.language || "en-US";
+    return new SpeechSDK.SpeechRecognizer(cfg, SpeechSDK.AudioConfig.fromDefaultMicrophoneInput());
+  } catch { return null; }
+}
+function stopListening() { listening = false; $("mic").classList.remove("listening"); }
+
+$("mic").onclick = async () => {
+  if (listening) {
+    if (azureRec) { azureRec.stopContinuousRecognitionAsync(() => { azureRec.close(); azureRec = null; }); stopListening(); }
+    else rec && rec.stop();
+    return;
+  }
+  baseText = thought.value ? thought.value.replace(/\s*$/, " ") : "";
+  if (serverMode) {
+    const az = await azureRecognizer();
+    if (az) {
+      azureRec = az; let committed = "";
+      az.recognizing = (_, e) => writeVoice(committed + e.result.text);
+      az.recognized = (_, e) => { if (e.result.text) { committed += e.result.text + " "; writeVoice(committed); } };
+      az.canceled = () => { say("Voice stopped. Try again or type."); stopListening(); };
+      az.startContinuousRecognitionAsync(() => { listening = true; $("mic").classList.add("listening"); say("Listening… tap the mic again to stop."); },
+        () => say("The microphone couldn't start. Check your browser's permission and try again."));
+      return;
+    }
+  }
+  if (!SR) { say("Voice input isn't supported in this browser. Typing works everywhere."); return; }
+  rec = new SR(); rec.lang = navigator.language || "en-US"; rec.interimResults = true; rec.continuous = true;
+  rec.onresult = (ev) => {
+    let s = ""; for (let i = 0; i < ev.results.length; i++) s += ev.results[i][0].transcript;
+    writeVoice(s);
+  };
+  rec.onerror = (ev) => {
+    if (ev.error === "not-allowed" || ev.error === "service-not-allowed")
+      say("The microphone is blocked in this view. Voice works when you run the app from its own address; type here for now.");
+    else if (ev.error !== "aborted" && ev.error !== "no-speech") say("Voice stopped (" + ev.error + "). Try again or type.");
+  };
+  rec.onend = stopListening;
+  try { rec.start(); listening = true; $("mic").classList.add("listening"); say("Listening… tap the mic again to stop."); }
+  catch { say("Voice couldn't start here. Typing works everywhere."); }
+};
+
+/* ---------- input ---------- */
+$("toss").onclick = toss;
+thought.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); toss(); } });
+
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+let down = null, hovering = null;
+const canvasEl = renderer.domElement;
+function pick(e) {
+  const r = canvasEl.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hit = ray.intersectObjects([...pads.map((p) => p.group), can], true)[0];
+  return hit ? hit.object.userData : null;
+}
+const pointer = { x: 0, y: 0 };
+canvasEl.addEventListener("pointermove", (e) => {
+  pointer.x = (e.clientX / innerWidth) * 2 - 1; pointer.y = (e.clientY / innerHeight) * 2 - 1;
+  const u = pick(e); hovering = u && (u.pad || (u.can && "can"));
+  canvasEl.style.cursor = hovering ? "pointer" : "default";
+});
+canvasEl.addEventListener("pointerdown", (e) => { down = { x: e.clientX, y: e.clientY }; });
+canvasEl.addEventListener("pointerup", (e) => {
+  if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) return;
+  const u = pick(e); if (!u) return;
+  if (u.pad && u.pad !== current) selectPad(u.pad);
+  else if (u.pad) thought.focus();
+  else if (u.can) toss();
+});
+
+/* ---------- layout ---------- */
+/* 360° orbit around the table: drag to circle, scroll or pinch to zoom */
+const narrow = host.clientWidth / host.clientHeight < 0.85;
+camera.position.set(0.55, narrow ? 3.6 : 2.75, narrow ? 7.4 : 4.9);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.target.set(0.3, 0.95, 0.35);
+controls.enableDamping = !reduce; controls.dampingFactor = 0.08;
+controls.enablePan = false;
+controls.minDistance = 2.4; controls.maxDistance = 9.5;
+controls.minPolarAngle = 0.25; controls.maxPolarAngle = 1.42;   // never below the grass
+controls.rotateSpeed = 0.7;
+controls.update();
+
+function resize() {
+  const w = host.clientWidth, h = host.clientHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h;
+  camera.fov = w / h < 0.85 ? 50 : 42;
+  camera.updateProjectionMatrix();
+}
+addEventListener("resize", resize); resize();
+
+/* ---------- loop ---------- */
+const clock = new THREE.Clock();
+function frame(now) {
+  // tweens
+  for (let i = tweens.length - 1; i >= 0; i--) {
+    const tw = tweens[i]; const p = Math.min(1, (now - tw.t0) / tw.ms);
+    tw.fn(tw.e(p)); if (p >= 1) { tweens.splice(i, 1); tw.res(); }
+  }
+  const t = clock.getElapsedTime();
+  controls.update();
+  wind.value = reduce ? 0 : t;
+  // selected pad lifts, hovered pads breathe
+  pads.forEach((pad) => {
+    const target = pad.baseY + (pad === current ? 0.035 : 0) + (hovering === pad ? 0.015 : 0);
+    pad.group.position.y += (target - pad.group.position.y) * 0.15;
+  });
+  if (hovering === "can" && !busy && lidAngle < 0.2) lidPivot.rotation.x = -(0.06 + Math.sin(t * 6) * 0.03);
+  else if (!busy && lidAngle === 0) lidPivot.rotation.x = 0;
+  // lamp: gentle flicker, or breathing guide
+  const b = $("breath");
+  if (now < breathUntil) {
+    const ph = ((now - breathStart) % 8000) / 8000;
+    const inhale = ph < 0.5;
+    const k = inhale ? ease.inOut(ph * 2) : 1 - ease.inOut((ph - 0.5) * 2);
+    lamp.intensity = LAMP_BASE * (0.55 + 0.9 * k);
+    b.textContent = inhale ? "breathe in…" : "and out…";
+  } else {
+    if (!b.hidden) b.hidden = true;
+    lamp.intensity = LAMP_BASE * (reduce ? 1 : 1 + Math.sin(t * 1.3) * 0.02 + Math.sin(t * 7.1) * 0.008);
+  }
+  bulb.material.color.setScalar(0.75 + lamp.intensity / LAMP_BASE * 0.25).multiply(new THREE.Color(1, 0.86, 0.63));
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* handwriting font arrives late: redraw sheets */
+if (document.fonts && document.fonts.load) {
+  document.fonts.load('44px "Nanum Pen Script"').then(() => pads.forEach(refresh)).catch(() => {});
+}
+selectPad(pads[0]);
+thought.blur();
+if (serverMode) say("Nothing you write is saved. With gentle reply on, your words go to the app's AI service for a short response.");
+})();
+</script>
+
+</body>
+</html>
